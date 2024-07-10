@@ -14,7 +14,7 @@ const connection_url = 'mongodb+srv://admin:UmJgpbGL9Vth6SWX@cluster0.qeswayn.mo
 // middlewares
 app.use(express.json());  // Middleware to parse JSON bodies
 app.use(Cors({
-    origin: 'http://localhost:3000', // Allow requests from this origin
+     
     methods: ['GET', 'POST'], // Allow these HTTP methods
     allowedHeaders: ['Content-Type'], // Allow these headers
   }));

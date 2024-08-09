@@ -27,3 +27,17 @@ export const getSpotifyToken = async (code) => {
     throw new Error(`Failed to fetch Spotify token: ${error.response.data.error_description}`);
   }
 };
+
+export const getUserProfile = async (token) => {
+  const url = 'https://api.spotify.com/v1/me';
+  const headers = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  try {
+    const response = await axios.get(url, { headers });
+    return response.data;
+  } catch (error) {
+    throw new Error(`Failed to fetch user profile: ${error.response.data.error.message}`);
+  }
+};

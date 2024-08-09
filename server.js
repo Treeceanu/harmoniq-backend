@@ -60,8 +60,8 @@ app.get("/harmoniq/cards", async (req, res) => {
 app.post("/signup", async (req, res) => {
   const { username, email, password } = req.body;
   try {
-    // const user = new User({ username, email, password });
-    const user = new User( "copac123", "copac123@123.com", "12345678" );
+    const user = new User({ username, email, password });
+    
     await user.save();
     res.status(201).send("User created succesfuly");
   } catch (err) {

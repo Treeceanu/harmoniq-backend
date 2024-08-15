@@ -8,36 +8,29 @@ const redirect_uri = 'http://localhost:8001/callback';
 export const getSpotifyToken = async (code) => {
   const token_url = 'https://accounts.spotify.com/api/token';
 
-  const data = qs.stringify({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri,
-    client_id,
-    client_secret,
-  });
-
-  const headers = {
-    'Content-Type': 'application/x-www-form-urlencoded',
+  const authOptions = {
+    method: 'post',
+    url: token_url,
+    data: qs.stringify({
+      code: code,
+      redirect_uri: redirect_uri,
+      grant_type: 'authorization_code'
+    }),
+    headers: {
+      'Authorization': 'Basic ' + Buffer.from(client_id + ':' + client_secret).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
   };
 
-  try {
-    const response = await axios.post(token_url, data, { headers });
-    return response.data.access_token;
-  } catch (error) {
-    throw new Error(`Failed to fetch Spotify token: ${error.response.data.error_description}`);
-  }
+  const response = await axios(authOptions);
+  return response.data;
 };
 
-export const getUserProfile = async (token) => {
-  const url = 'https://api.spotify.com/v1/me';
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
-
-  try {
-    const response = await axios.get(url, { headers });
-    return response.data;
-  } catch (error) {
-    throw new Error(`Failed to fetch user profile: ${error.response.data.error.message}`);
-  }
+export const getUserProfile = async (accessToken) => {
+  const response = await axios.get('https://api.spotify.com/v1/me', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  return response.data;
 };

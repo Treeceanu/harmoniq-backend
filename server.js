@@ -3,12 +3,12 @@ import mongoose from 'mongoose';
 import Cors from 'cors';
 import session from 'express-session';
 import axios from 'axios';
-import Cards from './dbCards.js';
 import User from './user.js';
+import LikedSong from './likedSongs.js';
 import { getSpotifyToken, getUserProfile } from './spotifyAuth.js';
 
 const client_id = 'bf79ea0130344f8192ac87a10a888f0d';
-const client_secret = 'd0e86bfb16544c69850fc283dc84149f'; // Ensure you add this line
+const client_secret = 'd0e86bfb16544c69850fc283dc84149f';
 const redirect_uri = 'http://localhost:8001/callback';
 
 const app = express();
@@ -24,28 +24,98 @@ app.use(Cors({
 }));
 
 app.use(session({
-  secret: 'your_secret_key',
+  secret: 'd0e86bfb16544c69850fc283dc84149f',
   resave: false,
   saveUninitialized: true,
   cookie: { secure: false }
 }));
 
-mongoose.connect(connection_url)
+mongoose.connect(connection_url, {
+ 
+})
   .then(() => console.log('MongoDB connected'))
   .catch((error) => console.error('MongoDB connection error:', error));
 
 app.get('/', (req, res) => res.status(200).send('Server is running'));
 
-app.post('/harmoniq/cards', async (req, res) => {
-  const dbCards = req.body;
+// Signup endpoint
+app.post('/signup', async (req, res) => {
+  const { username, email, password } = req.body;
   try {
-    const data = await Cards.create(dbCards);
-    res.status(201).send(data);
+    const user = new User({ username, email, password });
+    await user.save();
+    res.status(201).send('User created successfully');
   } catch (err) {
-    res.status(500).send(err);
+    res.status(500).send(`Error creating user: ${err.message}`);
   }
 });
 
+// Login endpoint
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  console.log(`Login attempt with email: ${email}`);
+  
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log(`User not found with email: ${email}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Log stored hash and password attempt
+    console.log(`Stored Hash: ${user.password}`);
+    const isPasswordMatch = await user.comparePassword(password);
+    console.log(`Password Match: ${isPasswordMatch}`);
+    
+    if (!isPasswordMatch) {
+      console.log(`Invalid password for user with email: ${email}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    req.session.userId = user._id;
+    console.log(`User logged in: ${email}`);
+    res.status(200).json({ user });
+  } catch (err) {
+    console.error(`Error logging in: ${err.message}`);
+    res.status(500).json({ error: `Error logging in: ${err.message}` });
+  }
+});
+// Like song endpoint
+app.post('/like-song', async (req, res) => {
+  const { song } = req.body;
+  const userId = req.session.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'User not authenticated. Please log in.' });
+  }
+
+  try {
+    const likedSong = new LikedSong({ ...song, userId });
+    await likedSong.save();
+    res.status(200).json({ message: 'Song liked!', likedSong });
+  } catch (err) {
+    console.error(`Error liking song: ${err.message}`);
+    res.status(500).json({ error: `Error liking song: ${err.message}` });
+  }
+});
+
+// Get liked songs endpoint
+app.get('/liked-songs', async (req, res) => {
+  const userId = req.session.userId;
+
+  if (userId) {
+    try {
+      const likedSongs = await LikedSong.find({ userId });
+      res.status(200).json(likedSongs);
+    } catch (err) {
+      res.status(500).json({ error: `Error fetching liked songs: ${err.message}` });
+    }
+  } else {
+    res.status(200).json(req.session.tempLikedSongs || []);
+  }
+});
+
+// Fetch Spotify recommendations
 app.get('/harmoniq/cards', async (req, res) => {
   const accessToken = req.session.accessToken;
   console.log('Access Token in /harmoniq/cards:', accessToken);
@@ -60,14 +130,16 @@ app.get('/harmoniq/cards', async (req, res) => {
         Authorization: `Bearer ${accessToken}`
       },
       params: {
-        seed_genres: 'pop',
-        limit: 10
+        seed_genres: 'hip-hop',
+        limit: 5
       }
     });
 
     const songs = response.data.tracks.map(track => ({
       name: track.name,
-      imgUrl: track.album.images[0].url // Ensure this points to the correct image URL
+      imgUrl: track.album.images[0].url,
+      previewUrl: track.preview_url,
+      artist: track.artists.map(artist => artist.name).join(', ')
     }));
 
     res.status(200).send(songs);
@@ -76,45 +148,14 @@ app.get('/harmoniq/cards', async (req, res) => {
   }
 });
 
-app.post('/signup', async (req, res) => {
-  const { username, email, password } = req.body;
-  try {
-    const user = new User({ username, email, password });
-    await user.save();
-    res.status(201).send('User created successfully');
-  } catch (err) {
-    res.status(500).send(`Error creating user: ${err.message}`);
-  }
-});
-
-app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const isMatch = user.password === password;
-    console.log({ email, password, isMatch });
-
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    req.session.userId = user._id;
-    res.status(200).json({ user });
-  } catch (err) {
-    res.status(500).json({ error: `Error logging in: ${err.message}` });
-  }
-});
-
+// Spotify login route
 app.get('/login', (req, res) => {
   const scopes = 'user-read-private user-read-email';
   const auth_url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirect_uri)}`;
   res.redirect(auth_url);
 });
 
+// Spotify callback route
 app.get('/callback', async (req, res) => {
   const code = req.query.code;
   if (!code) {
@@ -133,6 +174,7 @@ app.get('/callback', async (req, res) => {
   }
 });
 
+// User profile route
 app.get('/profile', async (req, res) => {
   const accessToken = req.session.accessToken;
   if (!accessToken) {
@@ -144,7 +186,7 @@ app.get('/profile', async (req, res) => {
     const profile = await getUserProfile(accessToken);
     res.status(200).send(profile);
   } catch (err) {
-    res.status(500).send(`Error retrieving user profile: ${err.message}`);
+    res.status (500).send(`Error retrieving user profile: ${err.message}`);
   }
 });
 

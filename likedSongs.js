@@ -1,4 +1,3 @@
-// likedSongs.js
 import mongoose from 'mongoose';
 
 const likedSongSchema = new mongoose.Schema({

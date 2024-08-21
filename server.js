@@ -4,7 +4,9 @@ import Cors from 'cors';
 import session from 'express-session';
 import axios from 'axios';
 import User from './user.js';
+import Song from './Song.js';
 import LikedSong from './likedSongs.js';
+import SongDislikeModel from './dislikedSongs.js';
 import { getSpotifyToken, getUserProfile } from './spotifyAuth.js';
 
 const client_id = 'bf79ea0130344f8192ac87a10a888f0d';
@@ -114,11 +116,41 @@ app.get('/liked-songs', async (req, res) => {
     res.status(200).json(req.session.tempLikedSongs || []);
   }
 });
+app.post('/disliked-songs', async (req, res) => {
+  const { songId } = req.body;
+  const userId = req.session.userId; // Assuming user is attached to request
+
+  if (!userId) {
+    return res.status(401).json({ error: "User not authenticated" });
+  }
+
+  try {
+    const result = await SongDislikeModel.create({ userId, songId });
+    console.log('Disliked song saved:', result); // Log success
+    res.status(200).json({ message: "Song disliked" });
+  } catch (error) {
+    console.error('Error disliking song:', error); // Detailed error logging
+    res.status(500).json({ error: "Error disliking song" });
+  }
+});
+app.get('/api/songs', async (req, res) => {
+  const { genre } = req.query;
+  
+  try {
+    const query = genre ? { genre } : {}; // Filter by genre if provided
+    const songs = await Song.find(query);
+    res.status(200).json(songs);
+  } catch (error) {
+    console.error('Error fetching songs:', error);
+    res.status(500).send('Server error');
+  }
+});
+
 
 // Fetch Spotify recommendations
 app.get('/harmoniq/cards', async (req, res) => {
   const accessToken = req.session.accessToken;
-  console.log('Access Token in /harmoniq/cards:', accessToken);
+  const genre = req.query.genre;
 
   if (!accessToken) {
     return res.status(400).send('Access token is missing');
@@ -130,24 +162,26 @@ app.get('/harmoniq/cards', async (req, res) => {
         Authorization: `Bearer ${accessToken}`
       },
       params: {
-        seed_genres: 'hip-hop',
-        limit: 5
+        seed_genres: genre || 'hip-hop',
+        limit: 50
       }
     });
 
+    console.log('API Response:', response.data); // Log the response
+
     const songs = response.data.tracks.map(track => ({
       name: track.name,
-      imgUrl: track.album.images[0].url,
+      imgUrl: track.album.images[0]?.url, // Use optional chaining to avoid errors
       previewUrl: track.preview_url,
       artist: track.artists.map(artist => artist.name).join(', ')
     }));
 
     res.status(200).send(songs);
   } catch (error) {
+    console.error(`Error fetching recommendations: ${error.message}`);
     res.status(500).send(`Error fetching recommendations: ${error.message}`);
   }
 });
-
 // Spotify login route
 app.get('/login', (req, res) => {
   const scopes = 'user-read-private user-read-email';

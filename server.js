@@ -4,9 +4,12 @@ import cors from 'cors';
 import session from 'express-session';
 import axios from 'axios';
 import User from './user.js';
+import 'dotenv/config';
 import Song from './Song.js';
 import LikedSong from './likedSongs.js';
+
 import SongDislikeModel from './dislikedSongs.js';
+
 import { getSpotifyToken, getUserProfile } from './spotifyAuth.js';
 
 import { Router } from 'express';
@@ -19,6 +22,7 @@ const app = express();
 const router = express.Router();
 const port = process.env.PORT || 8001;
 const connection_url = 'mongodb+srv://admin:UmJgpbGL9Vth6SWX@cluster0.qeswayn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+
 
 app.use(express.json());
 app.use(cors({
@@ -196,8 +200,10 @@ app.get('/harmoniq/cards', async (req, res) => {
 });
 // Spotify login route
 app.get('/login', (req, res) => {
+  console.log(process.env.REACT_APP_REDIRECT_URI);
   const scopes = 'user-read-private user-read-email';
-  const auth_url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URL)}`;
+  const auth_url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(process.env.REACT_APP_REDIRECT_URI)}`;
+
   res.redirect(auth_url);
 });
 

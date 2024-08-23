@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import Cors from 'cors';
+import cors from 'cors';
 import session from 'express-session';
 import axios from 'axios';
 import User from './user.js';
@@ -9,28 +9,37 @@ import LikedSong from './likedSongs.js';
 import SongDislikeModel from './dislikedSongs.js';
 import { getSpotifyToken, getUserProfile } from './spotifyAuth.js';
 
+import { Router } from 'express';
+
 const client_id = 'bf79ea0130344f8192ac87a10a888f0d';
 const client_secret = 'd0e86bfb16544c69850fc283dc84149f';
 const redirect_uri = 'http://localhost:8001/callback';
 
 const app = express();
+const router = express.Router();
 const port = process.env.PORT || 8001;
 const connection_url = 'mongodb+srv://admin:UmJgpbGL9Vth6SWX@cluster0.qeswayn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 app.use(express.json());
-app.use(Cors({
-  origin: 'http://localhost:3000',
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
-  credentials: true
+app.use(cors({
+  origin: 'http://localhost:3000', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true  
 }));
 
+// Setup express-session
 app.use(session({
-  secret: 'd0e86bfb16544c69850fc283dc84149f',
+  secret: client_secret,
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
+  saveUninitialized: false, // Only save sessions when something is stored
+  cookie: { 
+    secure: false, // Set to true if using https
+    httpOnly: true, // Prevents client-side JS from accessing the cookie
+    maxAge: 24 * 60 * 60 * 1000 // 1 day
+  }
 }));
+
+app.use(express.json());
 
 mongoose.connect(connection_url, {
  
@@ -55,33 +64,32 @@ app.post('/signup', async (req, res) => {
 // Login endpoint
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  console.log(`Login attempt with email: ${email}`);
-  
+
   try {
     const user = await User.findOne({ email });
-    if (!user) {
-      console.log(`User not found with email: ${email}`);
+    if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
-    // Log stored hash and password attempt
-    console.log(`Stored Hash: ${user.password}`);
-    const isPasswordMatch = await user.comparePassword(password);
-    console.log(`Password Match: ${isPasswordMatch}`);
-    
-    if (!isPasswordMatch) {
-      console.log(`Invalid password for user with email: ${email}`);
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    
-    req.session.userId = user._id;
-    console.log(`User logged in: ${email}`);
+
+    req.session.userId = user._id;  // Save user ID in the session
     res.status(200).json({ user });
   } catch (err) {
-    console.error(`Error logging in: ${err.message}`);
     res.status(500).json({ error: `Error logging in: ${err.message}` });
   }
 });
+app.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to logout' });
+    }
+    res.clearCookie('connect.sid');
+    res.status(200).send('Logged out successfully');
+  });
+});
+
+
+// Like song endpoint
+// Like song endpoint
 // Like song endpoint
 app.post('/like-song', async (req, res) => {
   const { song } = req.body;
@@ -92,9 +100,12 @@ app.post('/like-song', async (req, res) => {
   }
 
   try {
-    const likedSong = new LikedSong({ ...song, userId });
-    await likedSong.save();
-    res.status(200).json({ message: 'Song liked!', likedSong });
+    const existingSong = await LikedSong.findOne({ userId, name: song.name });
+    if (!existingSong) {
+      const likedSong = new LikedSong({ ...song, userId });
+      await likedSong.save();
+    }
+    res.status(200).json({ message: 'Song liked!' });
   } catch (err) {
     console.error(`Error liking song: ${err.message}`);
     res.status(500).json({ error: `Error liking song: ${err.message}` });
@@ -105,17 +116,18 @@ app.post('/like-song', async (req, res) => {
 app.get('/liked-songs', async (req, res) => {
   const userId = req.session.userId;
 
-  if (userId) {
-    try {
-      const likedSongs = await LikedSong.find({ userId });
-      res.status(200).json(likedSongs);
-    } catch (err) {
-      res.status(500).json({ error: `Error fetching liked songs: ${err.message}` });
-    }
-  } else {
-    res.status(200).json(req.session.tempLikedSongs || []);
+  if (!userId) {
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  try {
+    const likedSongs = await LikedSong.find({ userId });
+    res.status(200).json(likedSongs);
+  } catch (err) {
+    res.status(500).json({ error: `Error fetching liked songs: ${err.message}` });
   }
 });
+
 app.post('/disliked-songs', async (req, res) => {
   const { songId } = req.body;
   const userId = req.session.userId; // Assuming user is attached to request
@@ -185,7 +197,7 @@ app.get('/harmoniq/cards', async (req, res) => {
 // Spotify login route
 app.get('/login', (req, res) => {
   const scopes = 'user-read-private user-read-email';
-  const auth_url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirect_uri)}`;
+  const auth_url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URL)}`;
   res.redirect(auth_url);
 });
 
@@ -221,6 +233,40 @@ app.get('/profile', async (req, res) => {
     res.status(200).send(profile);
   } catch (err) {
     res.status (500).send(`Error retrieving user profile: ${err.message}`);
+  }
+});
+app.get('/user/:id/liked-songs', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).send('User not found');
+    res.json(user.likedSongs);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+// Add liked song for a user
+router.post('/user/:id/liked-songs', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).send('User not found');
+    user.likedSongs.push(req.body.song);
+    await user.save();
+    res.status(200).send('Song added');
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+// Remove liked song for a user
+router.delete('/user/:id/liked-songs', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).send('User not found');
+    user.likedSongs = user.likedSongs.filter(song => song !== req.body.song);
+    await user.save();
+    res.status(200).send('Song removed');
+  } catch (error) {
+    res.status(500).send(error.message);
   }
 });
 

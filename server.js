@@ -16,7 +16,7 @@ import { Router } from 'express';
 
 const client_id = 'bf79ea0130344f8192ac87a10a888f0d';
 const client_secret = 'd0e86bfb16544c69850fc283dc84149f';
-const redirect_uri = 'http://localhost:8001/callback';
+// const redirect_uri = 'http://localhost:8001/callback';
 
 const app = express();
 const router = express.Router();
@@ -25,11 +25,7 @@ const connection_url = 'mongodb+srv://admin:UmJgpbGL9Vth6SWX@cluster0.qeswayn.mo
 
 
 app.use(express.json());
-app.use(cors({
-  origin: 'http://localhost:3000', 
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true  
-}));
+
 
 // Setup express-session
 app.use(session({

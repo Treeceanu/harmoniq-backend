@@ -42,7 +42,7 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000 // 1 day
   }
 }));
-
+app.options('*', cors())
 app.use(express.json());
 
 mongoose.connect(connection_url, {

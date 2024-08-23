@@ -28,6 +28,13 @@ app.use(express.json());
 
 
 // Setup express-session
+app.use(cors({
+  origin: '', // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allow all HTTP methods
+  allowedHeaders: ['Content-Type', 'Authorization'], // Allow specific headers
+}));
+
+// Setup express-session
 app.use(session({
   secret: client_secret,
   resave: false,
@@ -38,7 +45,6 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000 // 1 day
   }
 }));
-app.options('*', cors())
 app.use(express.json());
 
 mongoose.connect(connection_url, {
